@@ -24,7 +24,6 @@ import androidx.annotation.NonNull;
 import com.ReactNativeBlobUtil.Response.ReactNativeBlobUtilDefaultResp;
 import com.ReactNativeBlobUtil.Response.ReactNativeBlobUtilFileResp;
 import com.ReactNativeBlobUtil.Utils.Tls12SocketFactory;
-import com.ReactNativeBlobUtil.ReactNativeBlobUtilFS;
 import com.facebook.common.logging.FLog;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Callback;
@@ -33,7 +32,6 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import java.io.File;
@@ -116,7 +114,6 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
     String url;
     String rawRequestBody;
     String destPath;
-    String customPath;
     ReadableArray rawRequestBodyArray;
     ReadableMap headers;
     Callback callback;
@@ -237,11 +234,7 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
 
     @Override
     public void run() {
-        Context appCtx = ReactNativeBlobUtilImpl.RCTContext.getApplicationContext();
-        String t123 =  String.valueOf(options.addAndroidDownloads.hasKey("storeLocal"));
-        String t1234 =  String.valueOf(options.addAndroidDownloads.getBoolean("storeLocal"));
-        RNLog.w(ReactNativeBlobUtilImpl.RCTContext, t123);
-        RNLog.w(ReactNativeBlobUtilImpl.RCTContext, t1234);
+
         // use download manager instead of default HTTP implementation
         if (options.addAndroidDownloads != null && options.addAndroidDownloads.hasKey("useDownloadManager")) {
 
@@ -260,51 +253,14 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
                     req.setDescription(options.addAndroidDownloads.getString("description"));
                 }
                 if (options.addAndroidDownloads.hasKey("path")) {
-                    String path = options.addAndroidDownloads.getString("path");
-                    File f = new File(path);
-                    File dir = f.getParentFile();
-
-                if (!f.exists()) {
-                    if (dir != null && !dir.exists()) {
-                        if (!dir.mkdirs() && !dir.exists()) {
-                            invoke_callback( "Failed to create parent directory of '" + path + "'", null, null);
-                            return;
-                        }
-                    }
+                    req.setDestinationUri(Uri.parse("file://" + options.addAndroidDownloads.getString("path")));
                 }
-                    req.setDestinationUri(Uri.parse("file://" + path));
-
-                    customPath = path;
-                }
-
-
-                if (options.addAndroidDownloads.hasKey("storeLocal") && options.addAndroidDownloads.getBoolean("storeLocal")) {
-                    RNLog.w(ReactNativeBlobUtilImpl.RCTContext, "a");
-                    String path = (String) ReactNativeBlobUtilFS.getSystemfolders(ReactNativeBlobUtilImpl.RCTContext).get("DownloadDir");
-                    path = path + UUID.randomUUID().toString();
-
-                    File f = new File(path);
-                    File dir = f.getParentFile();
-                    if (!f.exists()) {
-                        if (dir != null && !dir.exists()) {
-                            if (!dir.mkdirs() && !dir.exists()) {
-                                invoke_callback( "Failed to create parent directory of '" + path + "'", null, null);
-                                return;
-                            }
-                        }
-                    }
-                    req.setDestinationUri(Uri.parse("file://" + path));
-                    customPath = path;
-                }
-
                 if (options.addAndroidDownloads.hasKey("mime")) {
                     req.setMimeType(options.addAndroidDownloads.getString("mime"));
                 }
-
                 if (options.addAndroidDownloads.hasKey("mediaScannable") && options.addAndroidDownloads.getBoolean("mediaScannable")) {
                     req.allowScanningByMediaScanner();
                 }
-
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && options.addAndroidDownloads.hasKey("storeInDownloads") && options.addAndroidDownloads.getBoolean("storeInDownloads")) {
                     String t = options.addAndroidDownloads.getString("title");
                     if(t == null || t.isEmpty())
@@ -332,7 +288,7 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
                 } catch (MalformedURLException e) {
                     e.printStackTrace();
                 }
-
+                Context appCtx = ReactNativeBlobUtilImpl.RCTContext.getApplicationContext();
                 DownloadManager dm = (DownloadManager) appCtx.getSystemService(Context.DOWNLOAD_SERVICE);
                 downloadManagerId = dm.enqueue(req);
                 androidDownloadManagerTaskTable.put(taskId, Long.valueOf(downloadManagerId));
@@ -340,7 +296,7 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
                     appCtx.registerReceiver(this, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED);
                 }else{
                     appCtx.registerReceiver(this, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
-                }
+                }                
                 future = scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
                     @Override
                     public void run() {
@@ -682,9 +638,6 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
      */
     private void done(Response resp) {
         boolean isBlobResp = isBlobResponse(resp);
-        WritableMap respmap = getResponseInfo(resp,isBlobResp);
-        emitStateEvent(respmap.copy());
-
         emitStateEvent(getResponseInfo(resp, isBlobResp));
         switch (responseType) {
             case KeepInMemory:
@@ -703,7 +656,7 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
                         ins.close();
                         os.flush();
                         os.close();
-                        invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_PATH, dest, respmap.copy());
+                        invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_PATH, dest);
                     }
                     // response data directly pass to JS context as string.
                     else {
@@ -722,14 +675,14 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
                             try (FileOutputStream fos = new FileOutputStream(file)) {
                                 fos.write(ReactNativeBlobUtilFileTransformer.sharedFileTransformer.onWriteFile(b));
                             } catch (Exception e) {
-                                invoke_callback("Error from file transformer:" + e.getLocalizedMessage(),  respmap.copy());
+                                invoke_callback("Error from file transformer:" + e.getLocalizedMessage(), null);
                                 return;
                             }
-                            invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_PATH, this.destPath, respmap.copy());
+                            invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_PATH, this.destPath);
                             return;
                         }
                         if (responseFormat == ResponseFormat.BASE64) {
-                            invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_BASE64, android.util.Base64.encodeToString(b, Base64.NO_WRAP), respmap.copy());
+                            invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_BASE64, android.util.Base64.encodeToString(b, Base64.NO_WRAP));
                             return;
                         }
                         try {
@@ -746,14 +699,14 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
                         catch (CharacterCodingException ignored) {
                             if (responseFormat == ResponseFormat.UTF8) {
                                 String utf8 = new String(b);
-                                invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_UTF8, utf8, respmap.copy());
+                                invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_UTF8, utf8);
                             } else {
-                                invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_BASE64, android.util.Base64.encodeToString(b, Base64.NO_WRAP), respmap.copy());
+                                invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_BASE64, android.util.Base64.encodeToString(b, Base64.NO_WRAP));
                             }
                         }
                     }
                 } catch (IOException e) {
-                    invoke_callback("ReactNativeBlobUtil failed to encode response data to BASE64 string.", respmap.copy());
+                    invoke_callback("ReactNativeBlobUtil failed to encode response data to BASE64 string.", null);
                 }
                 break;
             case FileStorage:
@@ -785,26 +738,26 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
                         } catch (IOException exception) {
                             exception.printStackTrace();
                         }
-                        invoke_callback("Unexpected FileStorage response file: " + responseBodyString,  respmap.copy());
+                        invoke_callback("Unexpected FileStorage response file: " + responseBodyString, null);
                     } else {
-                        invoke_callback("Unexpected FileStorage response with no file.",  respmap.copy());
+                        invoke_callback("Unexpected FileStorage response with no file.", null);
                     }
                     return;
                 }
 
                 if (ReactNativeBlobUtilFileResp != null && !ReactNativeBlobUtilFileResp.isDownloadComplete()) {
-                    invoke_callback("Download interrupted.", respmap.copy());
+                    invoke_callback("Download interrupted.", null);
                 } else {
                     this.destPath = this.destPath.replace("?append=true", "");
-                    invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_PATH, this.destPath, respmap.copy());
+                    invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_PATH, this.destPath);
                 }
 
                 break;
             default:
                 try {
-                    invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_UTF8, new String(resp.body().bytes(), "UTF-8"), respmap.copy());
+                    invoke_callback(null, ReactNativeBlobUtilConst.RNFB_RESPONSE_UTF8, new String(resp.body().bytes(), "UTF-8"));
                 } catch (IOException e) {
-                    invoke_callback("ReactNativeBlobUtil failed to encode response data to UTF8 string.", respmap.copy());
+                    invoke_callback("ReactNativeBlobUtil failed to encode response data to UTF8 string.", null);
                 }
                 break;
         }
@@ -959,9 +912,9 @@ public class ReactNativeBlobUtilReq extends BroadcastReceiver implements Runnabl
                 }
 
                 // When the file is not found in media content database, check if custom path exists
-                if (options.addAndroidDownloads.hasKey("path") || options.addAndroidDownloads.hasKey("storeLocal")) {
+                if (options.addAndroidDownloads.hasKey("path")) {
                     try {
-                        String customDest = customPath;
+                        String customDest = options.addAndroidDownloads.getString("path");
                         boolean exists = new File(customDest).exists();
                         if (!exists)
                             throw new Exception("Download manager download failed, the file does not downloaded to destination.");

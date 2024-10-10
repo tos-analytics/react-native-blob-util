@@ -581,15 +581,6 @@ NSMutableDictionary *fileStreams = nil;
 
 # pragma mark - hash
 
-typedef enum {
-    HashAlgorithmMD5,
-    HashAlgorithmSHA1,
-    HashAlgorithmSHA224,
-    HashAlgorithmSHA256,
-    HashAlgorithmSHA384,
-    HashAlgorithmSHA512,
-} HashAlgorithm;
-
 + (void) hash:(NSString *)path
                   algorithm:(NSString *)algorithm
                   resolver:(RCTPromiseResolveBlock)resolve
@@ -620,11 +611,7 @@ typedef enum {
         return;
     }
 
-    NSFileHandle *fileHandle = [NSFileHandle fileHandleForReadingAtPath:path];
-    if (fileHandle == nil) {
-        reject(@"EUNKNOWN", [NSString stringWithFormat:@"Error opening '%@' for reading", path], error);
-        return;
-    }
+    NSData *content = [[NSFileManager defaultManager] contentsAtPath:path];
 
     NSArray *keys = [NSArray arrayWithObjects:@"md5", @"sha1", @"sha224", @"sha256", @"sha384", @"sha512", nil];
 
@@ -647,95 +634,21 @@ typedef enum {
 
     unsigned char buffer[digestLength];
 
-    const NSUInteger chunkSize = 1024 * 1024; // 1 Megabyte
-    NSData *dataChunk;
-
-    CC_MD5_CTX md5Context;
-    CC_SHA1_CTX sha1Context;
-    CC_SHA256_CTX sha256Context;
-    CC_SHA512_CTX sha512Context;
-    HashAlgorithm hashAlgorithm;
-
     if ([algorithm isEqualToString:@"md5"]) {
-        CC_MD5_Init(&md5Context);
-        hashAlgorithm = HashAlgorithmMD5;
+        CC_MD5(content.bytes, (CC_LONG)content.length, buffer);
     } else if ([algorithm isEqualToString:@"sha1"]) {
-        CC_SHA1_Init(&sha1Context);
-        hashAlgorithm = HashAlgorithmSHA1;
+        CC_SHA1(content.bytes, (CC_LONG)content.length, buffer);
     } else if ([algorithm isEqualToString:@"sha224"]) {
-        CC_SHA224_Init(&sha256Context);
-        hashAlgorithm = HashAlgorithmSHA224;
+        CC_SHA224(content.bytes, (CC_LONG)content.length, buffer);
     } else if ([algorithm isEqualToString:@"sha256"]) {
-        CC_SHA256_Init(&sha256Context);
-        hashAlgorithm = HashAlgorithmSHA256;
+        CC_SHA256(content.bytes, (CC_LONG)content.length, buffer);
     } else if ([algorithm isEqualToString:@"sha384"]) {
-        CC_SHA384_Init(&sha512Context);
-        hashAlgorithm = HashAlgorithmSHA384;
+        CC_SHA384(content.bytes, (CC_LONG)content.length, buffer);
     } else if ([algorithm isEqualToString:@"sha512"]) {
-        CC_SHA512_Init(&sha512Context);
-        hashAlgorithm = HashAlgorithmSHA512;
+        CC_SHA512(content.bytes, (CC_LONG)content.length, buffer);
     } else {
         reject(@"EINVAL", [NSString stringWithFormat:@"Invalid algorithm '%@', must be one of md5, sha1, sha224, sha256, sha384, sha512", algorithm], nil);
         return;
-    }
-
-    while (true) {
-        @autoreleasepool {
-            dataChunk = [fileHandle readDataUpToLength:chunkSize error:&error];
-
-            if (error) {
-                return reject(@"EREAD", [NSString stringWithFormat:@"Error reading file '%@'", path], error);
-                break;
-            }
-            
-            if (dataChunk == nil || dataChunk.length == 0) {
-                break;
-            }
-            
-            switch(hashAlgorithm) {
-                case HashAlgorithmMD5:
-                    CC_MD5_Update(&md5Context, [dataChunk bytes], CC_LONG([dataChunk length]));
-                    break;
-                case HashAlgorithmSHA1:
-                    CC_SHA1_Update(&sha1Context, [dataChunk bytes], CC_LONG([dataChunk length]));
-                    break;
-                case HashAlgorithmSHA224:
-                    CC_SHA224_Update(&sha256Context, [dataChunk bytes], CC_LONG([dataChunk length]));
-                    break;
-                case HashAlgorithmSHA256:
-                    CC_SHA256_Update(&sha256Context, [dataChunk bytes], CC_LONG([dataChunk length]));
-                    break;
-                case HashAlgorithmSHA384:
-                    CC_SHA384_Update(&sha512Context, [dataChunk bytes], CC_LONG([dataChunk length]));
-                    break;
-                case HashAlgorithmSHA512:
-                    CC_SHA512_Update(&sha512Context, [dataChunk bytes], CC_LONG([dataChunk length]));
-                    break;
-            }
-            
-            dataChunk = nil;
-        }
-    }
-
-    switch(hashAlgorithm) {
-        case HashAlgorithmMD5:
-            CC_MD5_Final(buffer, &md5Context);
-            break;
-        case HashAlgorithmSHA1:
-            CC_SHA1_Final(buffer, &sha1Context);
-            break;
-        case HashAlgorithmSHA224:
-            CC_SHA224_Final(buffer, &sha256Context);
-            break;
-        case HashAlgorithmSHA256:
-            CC_SHA256_Final(buffer, &sha256Context);
-            break;
-        case HashAlgorithmSHA384:
-            CC_SHA384_Final(buffer, &sha512Context);
-            break;
-        case HashAlgorithmSHA512:
-            CC_SHA512_Final(buffer, &sha512Context);
-            break;
     }
 
     NSMutableString *output = [NSMutableString stringWithCapacity:digestLength * 2];

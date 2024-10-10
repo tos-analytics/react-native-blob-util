@@ -10,12 +10,9 @@ Pod::Spec.new do |s|
   s.requires_arc = true
   s.license      = 'MIT'
   s.homepage     = 'n/a'
-  s.source       = { :git => "https://github.com/RonRadtke/react-native-blob-util", :tag => "v#{s.version.to_s}" }
+  s.source       = { :git => "https://github.com/RonRadtke/react-native-blob-util" }
   s.author       = 'RonRadtke'
   s.source_files = 'ios/**/*.{h,m,mm,swift}'
-  s.resource_bundles = {
-    'ReactNativeBlobUtilPrivacyInfo' => ['ios/PrivacyInfo.xcprivacy'],
-  }
   s.platforms       = { :ios => "11.0" }
   s.framework    = 'AssetsLibrary'
 
